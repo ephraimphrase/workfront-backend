@@ -5,13 +5,17 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate, login, logout
-import jwt
-from datetime import datetime, timedelta
-from django.conf import settings
-
-
+from rest_framework_simplejwt.views import TokenRefreshView, TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import AllowAny
 
 # Create your views here.
+class CustomTokenPairView(TokenObtainPairView):
+    permission_classes = (AllowAny,)
+
+class CustomTokenRefreshView(TokenRefreshView):
+    permission_classes = (AllowAny,)
+
 class UserList(generics.ListAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -39,31 +43,9 @@ class SignUpView(APIView):
             user = User.objects.create_user(first_name=first_name, last_name=last_name, email=email, username=username, password=password)
             user.save()
 
-            serializer = UserSerializer(data=user)
+            serializer = UserSerializer(user)
 
-            # Generate JWT token
-            expiration_time = datetime.utcnow() + timedelta(hours=1)
-            payload = {'user_id': user.id, 'username': user.username, 'exp':expiration_time}
-            token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
-
-            return Response({'token': token, 'message':serializer.data}, status=status.HTTP_201_CREATED)
-
-
-class SignInView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-
-        user = authenticate(username=username, password=password)
-
-        if not user:
-            return Response({'error': 'Invalid username or password.'}, status=status.HTTP_401_UNAUTHORIZED)
-        
-        login(request, user)
-
-        # Generate JWT token
-        expiration_time = datetime.utcnow() + timedelta(hours=1)
-        payload = {'user_id': user.id, 'username': user.username, 'exp':expiration_time}
-        token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
-
-        return(Response({'token':token}, status=status.HTTP_200_OK))
+            refresh = RefreshToken.for_user(user)
+            token = str(refresh.access_token)
+            
+            return Response({'token': token, 'message':serializer.data, 'refresh':refresh}, status=status.HTTP_201_CREATED)
